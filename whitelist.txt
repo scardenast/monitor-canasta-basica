@@ -1,0 +1,10 @@
+g 0,0 0,1
+arroz g 22,2 81,1
+espiral g 20,2 26,2
+galleta dulce g 1,1 5,4
+galleta no dulce g 0,5 1,9
+torta 15 o 20 personas g 7,2 27,2
+prepizza familiar g 0,8 0,1
+avena g 5,1 0,1
+asiento g 0,3 0,4
+carne molida g 4,9 8,5
