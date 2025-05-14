@@ -92,10 +92,9 @@ def load_data():
     return pd.DataFrame(registros)
 
 # ========= STREAMLIT =========
-st.set_page_config(page_title="Canasta Básica Monitor", layout="wide")
+st.set_page_config(page_title="Monitor Canasta Básica", layout="wide")
 st.title("📊 Monitor Inteligente de la Canasta Básica")
 
-# cargar datos
 with st.spinner("🔄 Descargando y procesando..."):
     df = load_data()
 
@@ -133,11 +132,9 @@ df_f = df[
     df['producto'].isin(prod_sel)
 ].copy()
 
-df_f['mes'] = pd.Categorical(
-    df_f['mes'],
-    categories=[m for m in MONTHS_BY_YEAR[year_sel[0]] if m in month_sel],
-    ordered=True
-)
+# ordenar meses cronológicamente según primer año seleccionado
+order = MONTHS_BY_YEAR[year_sel[0]]
+df_f['mes'] = pd.Categorical(df_f['mes'], categories=order, ordered=True)
 
 # ---- GRÁFICO ----
 if metric == 'Variación %':
@@ -149,17 +146,54 @@ else:
         index='mes', columns='producto', values='precio', aggfunc='mean'
     )
 
-pivot = pivot.reindex(index=[m for m in MONTHS_BY_YEAR[year_sel[0]] if m in month_sel])
-
+pivot = pivot.reindex(index=[m for m in order if m in month_sel])
 st.subheader(f"{metric} Mensual por Producto")
 st.line_chart(pivot)
 
 # ---- INTERPRETACIONES ----
-st.subheader("📝 Interpretaciones")
-avg = df_f['variacion'].mean() if metric=='Variación %' else df_f['precio'].mean()
-unit = '%' if metric=='Variación %' else 'CLP'
-st.markdown(f"- Valor promedio ({metric.lower()}): **{avg:.2f} {unit}** sobre el rango seleccionado.")
+st.subheader("📝 Interpretaciones y Conclusiones")
 
-# ---- TABLA ----
+# elegir la columna correcta para cálculos
+series = df_f['variacion'] if metric=='Variación %' else df_f['precio']
+unit = '%' if metric=='Variación %' else 'CLP'
+
+# promedio
+avg = series.mean()
+st.markdown(f"- **Valor promedio ({metric})**: **{avg:.2f} {unit}** sobre el rango seleccionado.")
+
+# máximos y mínimos
+idx_max = series.idxmax()
+idx_min = series.idxmin()
+row_max = df_f.loc[idx_max]
+row_min = df_f.loc[idx_min]
+
+if metric=='Variación %':
+    st.markdown(
+        f"- **Mayor incremento**: {row_max['producto']} con **{row_max['variacion']:.2f}%** "
+        f"en {row_max['mes']} {row_max['year']}."
+    )
+    st.markdown(
+        f"- **Mayor descenso**: {row_min['producto']} con **{row_min['variacion']:.2f}%** "
+        f"en {row_min['mes']} {row_min['year']}."
+    )
+else:
+    st.markdown(
+        f"- **Precio máximo**: {row_max['producto']} a **${row_max['precio']:.0f}** "
+        f"en {row_max['mes']} {row_max['year']}."
+    )
+    st.markdown(
+        f"- **Precio mínimo**: {row_min['producto']} a **${row_min['precio']:.0f}** "
+        f"en {row_min['mes']} {row_min['year']}."
+    )
+
+st.markdown("**Variación promedio por mes:**" if metric=='Variación %' else "**Precio promedio por mes:**")
+grouped = df_f.groupby('mes')[ 'variacion' if metric=='Variación %' else 'precio' ].mean().reindex(pivot.index)
+for mes, val in grouped.items():
+    if metric=='Variación %':
+        st.markdown(f"  - {mes}: {val:.2f}%")
+    else:
+        st.markdown(f"  - {mes}: ${val:.0f}")
+
+# ---- TABLA DETALLADA ----
 st.subheader("Datos Detallados")
 st.dataframe(df_f.reset_index(drop=True), use_container_width=True)
