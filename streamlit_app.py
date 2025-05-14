@@ -11,66 +11,63 @@ YEARS = {
     '2024': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2024',
     '2025': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2025',
 }
-SKIP_PAGES = 1  # Cuántas páginas intro omitir
-# Mapa abreviatura → mes completo
+SKIP_PAGES = 1
+
 MES_MAP = {
-    'ene': 'Enero', 'feb': 'Febrero', 'mar': 'Marzo', 'abr': 'Abril',
-    'may': 'Mayo', 'jun': 'Junio', 'jul': 'Julio', 'ago': 'Agosto',
-    'sep': 'Septiembre', 'oct': 'Octubre', 'nov': 'Noviembre', 'dic': 'Diciembre'
+    'ene':'Enero','feb':'Febrero','mar':'Marzo','abr':'Abril',
+    'may':'Mayo','jun':'Junio','jul':'Julio','ago':'Agosto',
+    'sep':'Septiembre','oct':'Octubre','nov':'Noviembre','dic':'Diciembre'
 }
 MESES_ORDEN = list(MES_MAP.values())
 
-# ========= FUNCIÓN DE CARGA Y PARSEO =========
 @st.cache_data(ttl=3600)
 def load_variaciones():
-    """Descarga los PDFs de 2024 y 2025, extrae Anexo 2 y devuelve un DataFrame."""
-    # 1) Encontrar y descargar PDFs en memoria
+    # 1) Descarga en memoria los PDFs
     pdf_list = []
     for year, url in YEARS.items():
-        resp = requests.get(url); resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        r = requests.get(url); r.raise_for_status()
+        soup = BeautifulSoup(r.text, 'html.parser')
         for a in soup.find_all('a', href=True):
             href = a['href']
-            text = a.get_text().lower()
-            if href.lower().endswith('.pdf') and year in (href.lower() + text):
-                pdf_url = requests.compat.urljoin(url, href)
-                r2 = requests.get(pdf_url); r2.raise_for_status()
-                filename = pdf_url.split('/')[-1]
-                pdf_list.append((filename, BytesIO(r2.content)))
+            txt  = a.get_text().lower()
+            if href.lower().endswith('.pdf') and year in (href + txt):
+                full_url = requests.compat.urljoin(url, href)
+                r2 = requests.get(full_url); r2.raise_for_status()
+                fname = full_url.split('/')[-1]
+                pdf_list.append((fname, BytesIO(r2.content)))
 
-    # 2) Parser de variaciones de "Anexo 2"
-    def parse_anexo2(filename, pdf_stream):
+    # 2) Parser sin gating por «Anexo»
+    def parse_variaciones(fname, stream):
         rows = []
         regex = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
-        # Extraer abreviatura de mes del nombre de archivo
-        m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', filename.lower())
+        # extraer abreviatura de mes
+        m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', fname.lower())
         mes_full = MES_MAP.get(m.group(1), None) if m else None
+        if not mes_full:
+            return pd.DataFrame()
 
-        with pdfplumber.open(pdf_stream) as pdf:
-            in_table = False
+        with pdfplumber.open(stream) as pdf:
             for i, page in enumerate(pdf.pages):
                 if i < SKIP_PAGES:
                     continue
-                text = page.extract_text() or ''
-                for line in text.split('\n'):
-                    if 'anexo 2' in line.lower():
-                        in_table = True
-                        continue
-                    if not in_table:
-                        continue
+                texto = page.extract_text() or ''
+                for line in texto.split('\n'):
                     match = regex.match(line.strip())
-                    if match and mes_full:
-                        producto = match.group(1).strip()
-                        valor    = float(match.group(2).replace(',', '.'))
-                        rows.append({'producto': producto, 'variacion': valor, 'mes': mes_full})
-
+                    if match:
+                        prod = match.group(1).strip()
+                        val  = float(match.group(2).replace(',', '.'))
+                        rows.append({
+                            'producto':  prod,
+                            'variacion': val,
+                            'mes':       mes_full
+                        })
         return pd.DataFrame(rows)
 
-    # 3) Aplicar parser a cada PDF
-    dfs = [parse_anexo2(fn, stream) for fn, stream in pdf_list]
+    # 3) Aplicar a todos los PDFs
+    dfs = [parse_variaciones(fn, st) for fn, st in pdf_list]
     valid = [df for df in dfs if not df.empty]
     if not valid:
-        return pd.DataFrame(columns=['producto', 'variacion', 'mes'])
+        return pd.DataFrame(columns=['producto','variacion','mes'])
     return pd.concat(valid, ignore_index=True)
 
 # ========= STREAMLIT APP =========
@@ -82,26 +79,24 @@ if df.empty:
     st.error("No se pudieron cargar datos. Verifica la conexión o la fuente.")
     st.stop()
 
-# Sidebar: filtro de productos
+# Sidebar
 st.sidebar.header("Filtros")
 productos = sorted(df['producto'].unique())
-seleccion = st.sidebar.multiselect("Selecciona productos", productos, default=productos)
-df_sel = df[df['producto'].isin(seleccion)].copy()
+sel = st.sidebar.multiselect("Selecciona productos", productos, default=productos)
+df_sel = df[df['producto'].isin(sel)].copy()
 
-# Ordenar meses cronológicamente
+# Orden cronológico de meses
 df_sel['mes'] = pd.Categorical(df_sel['mes'], categories=MESES_ORDEN, ordered=True)
 
-# Pivot con agregación para manejar duplicados
+# Pivot con agregación
 chart_data = (
     df_sel
     .pivot_table(index='mes', columns='producto', values='variacion', aggfunc='mean')
     .reindex(index=MESES_ORDEN)
 )
 
-# Gráfico
 st.subheader("Variación Mensual por Producto")
 st.line_chart(chart_data)
 
-# Tabla de datos
 st.subheader("Datos Detallados")
 st.dataframe(df_sel.reset_index(drop=True), use_container_width=True)
