@@ -5,4 +5,4 @@ requests
 beautifulsoup4
 matplotlib
 scikit-learn
-
+plotly
