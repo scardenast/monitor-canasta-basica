@@ -59,6 +59,7 @@ def load_data():
                 r = requests.get(url); r.raise_for_status()
             except:
                 continue
+
             mes_nombre = NUM2MONTH[mm]
             with pdfplumber.open(BytesIO(r.content)) as pdf:
                 for i,page in enumerate(pdf.pages):
@@ -71,57 +72,83 @@ def load_data():
                         if prod.lower()=="cba": continue
                         if prod not in FIXED_PRODUCTS: continue
                         if abs(val)>100: continue
-                        rows.append({"year":year,"mes":mes_nombre,
-                                     "producto":prod,"variacion":val})
+                        rows.append({
+                            "year":year,
+                            "mes":mes_nombre,
+                            "producto":prod,
+                            "variacion":val
+                        })
+
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    return df.drop_duplicates(["year","mes","producto"] )
+    return df.drop_duplicates(["year","mes","producto"])
 
-# APP
+# ====== APP ======
 st.set_page_config(page_title="Monitor Canasta Básica", layout="wide")
 st.title("📊 Monitor Inteligente de la Canasta Básica")
-with st.spinner("🔄 Cargando…"):
+
+with st.spinner("🔄 Cargando datos…"):
     df = load_data()
 if df.empty:
     st.error("⚠️ No se encontraron datos.")
     st.stop()
 
-# Sidebar
+# ====== SIDEBAR ======
 st.sidebar.header("Filtros")
-
 years = sorted(df["year"].unique())
 year_sel = st.sidebar.multiselect("Año", years, default=years)
-months = sorted(df[df["year"].isin(year_sel)]["mes"].unique(),
-                key=lambda m: list(NUM2MONTH.values()).index(m))
+
+months = sorted(
+    df[df["year"].isin(year_sel)]["mes"].unique(),
+    key=lambda m: list(NUM2MONTH.values()).index(m)
+)
 month_sel = st.sidebar.multiselect("Mes", months, default=months)
+
 prod_sel = st.sidebar.multiselect("Producto", FIXED_PRODUCTS, default=FIXED_PRODUCTS)
 
-# Filtrar
-df_f = df[df["year"].isin(year_sel) & df["mes"].isin(month_sel) & df["producto"].isin(prod_sel)]
+# ====== FILTRAR ======
+df_f = df[
+    df["year"].isin(year_sel) &
+    df["mes"].isin(month_sel) &
+    df["producto"].isin(prod_sel)
+].copy()
 
-# Periodo
-periodos = [f"{y} {m}" for y in years for m in MONTHS_BY_YEAR[y] if y in year_sel and m in month_sel]
+# ====== PERIODOS CRONOLÓGICOS ======
+periodos = []
+for y in sorted(year_sel):
+    for mm in YEARS[y]:
+        mesn = NUM2MONTH[mm]
+        if mesn in month_sel:
+            periodos.append(f"{y} {mesn}")
+
 df_f["periodo"] = df_f["year"] + " " + df_f["mes"]
 df_f["periodo"] = pd.Categorical(df_f["periodo"], categories=periodos, ordered=True)
 
-# Gráfico mensual
+# ====== GRÁFICO MENSUAL ======
 st.subheader("Variación Porcentual Mensual por Producto")
-monthly = df_f.pivot_table(index="periodo", columns="producto", values="variacion", aggfunc="mean")
+monthly = df_f.pivot_table(
+    index="periodo", columns="producto", values="variacion", aggfunc="mean"
+)
 monthly = monthly.reindex(periodos).dropna(how="all")
 st.line_chart(monthly)
 
-# Interpretaciones
+# ====== INTERPRETACIONES ======
 st.subheader("📝 Interpretaciones y Conclusiones")
 avg = df_f["variacion"].mean()
 st.markdown(f"- Variación media: **{avg:.2f}%**.")
+
 row_max = df_f.loc[df_f["variacion"].idxmax()]
 st.markdown(f"- Mayor alza: _{row_max['producto']}_ +{row_max['variacion']:.2f}% en {row_max['periodo']}.")
+
 row_min = df_f.loc[df_f["variacion"].idxmin()]
 st.markdown(f"- Mayor baja: _{row_min['producto']}_ {row_min['variacion']:.2f}% en {row_min['periodo']}.")
 
-# Datos detallados
+# ====== DATOS DETALLADOS ======
 st.subheader("Datos Detallados")
-st.dataframe(df_f[["year","mes","producto","variacion"]]
-              .sort_values(["periodo","producto"]).reset_index(drop=True),
-              use_container_width=True)
+st.dataframe(
+    df_f[["year","mes","producto","variacion"]]
+      .sort_values(["periodo","producto"])
+      .reset_index(drop=True),
+    use_container_width=True
+)
