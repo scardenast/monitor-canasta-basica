@@ -5,93 +5,113 @@ import requests
 import re
 from io import BytesIO
 
-# ========= CONFIG =========
+# ========= CONFIGURACIÓN =========
 DIRECT_PDF_URLS = [
-    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_ser%C3%ADe/2025/Valor_CBA_y_LPs_25.01.pdf',
-    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_ser%C3%ADe/2025/Valor_CBA_y_LPs_25.02.pdf',
-    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_ser%C3%ADe/2025/Valor_CBA_y_LPs_25.03.pdf',
+    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_serie/2025/Valor_CBA_y_LPs_25.01.pdf',
+    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_serie/2025/Valor_CBA_y_LPs_25.02.pdf',
+    'https://observatorio.ministeriodesarrollosocial.gob.cl/storage/docs/cba/nueva_serie/2025/Valor_CBA_y_LPs_25.03.pdf',
 ]
-SKIP_PAGES = 1
+SKIP_PAGES = 1  # Cuántas páginas introductorias omitir
 
-# Mapa numérico → mes
-NUM2ABBR = {'01':'ene','02':'feb','03':'mar'}
-MES_MAP    = {'ene':'Enero','feb':'Febrero','mar':'Marzo'}
-MESES_ORDEN= ['Enero','Febrero','Marzo']
+# Mapeo de mes numérico a nombre completo
+NUM2MONTH = {
+    '01': 'Enero',
+    '02': 'Febrero',
+    '03': 'Marzo',
+    '04': 'Abril',
+    '05': 'Mayo',
+    '06': 'Junio',
+    '07': 'Julio',
+    '08': 'Agosto',
+    '09': 'Septiembre',
+    '10': 'Octubre',
+    '11': 'Noviembre',
+    '12': 'Diciembre'
+}
+MESES_ORDEN = ['Enero', 'Febrero', 'Marzo']  # sólo los tres meses
 
-# ========= PARSER =========
+# ========= PARSER EN MEMORIA =========
 @st.cache_data(ttl=3600)
 def load_variaciones():
-    # Regex: sólo letras y espacios en producto, luego número con decimal
-    line_pat = re.compile(r"^([A-Za-zÁÉÍÓÚáéíóúÑñüÜ\s\-/\(\)]+?)\s+(-?\d+[.,]\d+)$")
-    rows = []
+    """
+    Descarga los PDFs de DIRECT_PDF_URLS, extrae todas las líneas
+    que encajen con "Producto   valor" y devuelve un DataFrame.
+    """
+    regex_line = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
+    registros = []
 
-    for pdf_url in DIRECT_PDF_URLS:
-        # extraer mes de la URL
-        mnum = re.search(r'25\.(\d{2})', pdf_url)
-        mes_abbr = NUM2ABBR.get(mnum.group(1)) if mnum else None
-        mes_full = MES_MAP.get(mes_abbr)
-        if not mes_full:
+    for url in DIRECT_PDF_URLS:
+        # Descargar PDF
+        try:
+            resp = requests.get(url)
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"⚠️ No se pudo descargar {url}: {e}")
             continue
 
-        # descargar
-        r = requests.get(pdf_url); r.raise_for_status()
-        stream = BytesIO(r.content)
+        # Determinar mes a partir del nombre de archivo (25.MM.pdf)
+        filename = url.rsplit('/', 1)[-1]
+        mnum = re.search(r'25\.(\d{2})', filename)
+        month = NUM2MONTH.get(mnum.group(1)) if mnum else None
+        if not month:
+            print(f"⚠️ Mes no reconocido en {filename}")
+            continue
 
-        # parsear
+        # Abrir PDF en memoria y extraer líneas válidas
+        stream = BytesIO(resp.content)
         with pdfplumber.open(stream) as pdf:
-            for idx, page in enumerate(pdf.pages):
-                if idx < SKIP_PAGES:
+            for i, page in enumerate(pdf.pages):
+                if i < SKIP_PAGES:
                     continue
                 text = page.extract_text() or ''
                 for line in text.split('\n'):
-                    m = line_pat.match(line.strip())
-                    if not m:
+                    match = regex_line.match(line.strip())
+                    if not match:
                         continue
-                    producto = m.group(1).strip()
-                    # descartar líneas que sean simplemente nombres de meses
-                    if producto.lower() in MES_MAP.values():
-                        continue
-                    # descartar si contiene dígitos
+                    producto = match.group(1).strip()
+                    # Ignorar líneas que no sean productos
                     if re.search(r'\d', producto):
                         continue
-                    valor = float(m.group(2).replace(',', '.'))
-                    rows.append({
-                        'producto':  producto,
+                    valor = float(match.group(2).replace(',', '.'))
+                    registros.append({
+                        'producto': producto,
                         'variacion': valor,
-                        'mes':       mes_full
+                        'mes': month
                     })
 
-    if not rows:
+    if not registros:
         return pd.DataFrame(columns=['producto','variacion','mes'])
-    return pd.DataFrame(rows)
+    return pd.DataFrame(registros)
 
-# ========= STREAMLIT =========
+# ========= STREAMLIT APP =========
 st.set_page_config(page_title="Canasta Básica 2025", layout="wide")
-st.title("📊 Monitor Variaciones CBA Ene–Mar 2025")
+st.title("📊 Monitor Inteligente de la Canasta Básica (Ene–Mar 2025)")
 
 df = load_variaciones()
 if df.empty:
-    st.error("⚠️ No se encontraron variaciones. Verifica URLs o conexión.")
+    st.error("⚠️ No se encontraron variaciones. Verifica las URLs o tu conexión.")
     st.stop()
 
-# filtros
-st.sidebar.header("Selecciona productos")
-prod_list = sorted(df['producto'].unique())
-seleccion = st.sidebar.multiselect("Productos", prod_list, default=prod_list)
+# Sidebar: filtros
+st.sidebar.header("Filtros")
+productos = sorted(df['producto'].unique())
+seleccion = st.sidebar.multiselect("Selecciona productos", productos, default=productos)
 df_sel = df[df['producto'].isin(seleccion)].copy()
 
-# ordenar meses
+# Ordenar meses
 df_sel['mes'] = pd.Categorical(df_sel['mes'], categories=MESES_ORDEN, ordered=True)
 
-# pivot + mean para duplicados
-chart_data = df_sel.pivot_table(
-    index='mes', columns='producto', values='variacion', aggfunc='mean'
-).reindex(index=MESES_ORDEN)
+# Pivot table con media para duplicados
+chart_data = (
+    df_sel
+    .pivot_table(index='mes', columns='producto', values='variacion', aggfunc='mean')
+    .reindex(index=MESES_ORDEN)
+)
 
-# gráfico
+# Gráfico
 st.subheader("Variación Mensual por Producto")
 st.line_chart(chart_data)
 
-# tabla
+# Tabla detallada
 st.subheader("Datos Detallados")
 st.dataframe(df_sel.reset_index(drop=True), use_container_width=True)
