@@ -1,8 +1,8 @@
 streamlit
 pandas
 pdfplumber
-scikit-learn
 requests
 beautifulsoup4
 matplotlib
+scikit-learn
 
