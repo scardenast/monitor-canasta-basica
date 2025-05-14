@@ -11,9 +11,8 @@ YEARS = {
     '2024': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2024',
     '2025': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2025',
 }
-SKIP_PAGES = 1  # páginas introductorias a omitir
-
-# Mapa abreviatura → nombre completo de mes
+SKIP_PAGES = 1  # Cuántas páginas intro omitir
+# Mapa abreviatura → mes completo
 MES_MAP = {
     'ene': 'Enero', 'feb': 'Febrero', 'mar': 'Marzo', 'abr': 'Abril',
     'may': 'Mayo', 'jun': 'Junio', 'jul': 'Julio', 'ago': 'Agosto',
@@ -21,45 +20,36 @@ MES_MAP = {
 }
 MESES_ORDEN = list(MES_MAP.values())
 
-# ========= FUNCIONES DE PARSEO =========
+# ========= FUNCIÓN DE CARGA Y PARSEO =========
 @st.cache_data(ttl=3600)
 def load_variaciones():
-    """
-    Descarga en memoria todos los PDFs de 2024 y 2025,
-    extrae las variaciones de productos de 'Anexo 2' y
-    devuelve un DataFrame con columnas: producto, variacion, mes.
-    """
-    pdf_files = []
+    """Descarga los PDFs de 2024 y 2025, extrae Anexo 2 y devuelve un DataFrame."""
+    # 1) Encontrar y descargar PDFs en memoria
+    pdf_list = []
     for year, url in YEARS.items():
-        resp = requests.get(url)
-        resp.raise_for_status()
+        resp = requests.get(url); resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         for a in soup.find_all('a', href=True):
             href = a['href']
             text = a.get_text().lower()
-            if href.lower().endswith('.pdf') and year in (href + text):
+            if href.lower().endswith('.pdf') and year in (href.lower() + text):
                 pdf_url = requests.compat.urljoin(url, href)
                 r2 = requests.get(pdf_url); r2.raise_for_status()
-                fname = pdf_url.rsplit('/', 1)[-1]
-                pdf_files.append((fname, BytesIO(r2.content)))
+                filename = pdf_url.split('/')[-1]
+                pdf_list.append((filename, BytesIO(r2.content)))
 
-    def extract_variations(filename, stream):
-        """
-        Lee el PDF en stream, omite SKIP_PAGES páginas introductorias,
-        busca la sección 'Anexo 2' y extrae líneas de 'Producto <variación>'.
-        """
+    # 2) Parser de variaciones de "Anexo 2"
+    def parse_anexo2(filename, pdf_stream):
         rows = []
-        pat = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
-        mes_abbr = ''
+        regex = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
+        # Extraer abreviatura de mes del nombre de archivo
         m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', filename.lower())
-        if m:
-            mes_abbr = m.group(1)
-        mes_full = MES_MAP.get(mes_abbr, mes_abbr.title())
+        mes_full = MES_MAP.get(m.group(1), None) if m else None
 
-        with pdfplumber.open(stream) as pdf:
+        with pdfplumber.open(pdf_stream) as pdf:
             in_table = False
-            for idx, page in enumerate(pdf.pages):
-                if idx < SKIP_PAGES:
+            for i, page in enumerate(pdf.pages):
+                if i < SKIP_PAGES:
                     continue
                 text = page.extract_text() or ''
                 for line in text.split('\n'):
@@ -68,50 +58,50 @@ def load_variaciones():
                         continue
                     if not in_table:
                         continue
-                    m2 = pat.match(line.strip())
-                    if m2:
-                        prod = m2.group(1).strip()
-                        val  = float(m2.group(2).replace(',', '.'))
-                        rows.append({'producto': prod, 'variacion': val, 'mes': mes_full})
+                    match = regex.match(line.strip())
+                    if match and mes_full:
+                        producto = match.group(1).strip()
+                        valor    = float(match.group(2).replace(',', '.'))
+                        rows.append({'producto': producto, 'variacion': valor, 'mes': mes_full})
+
         return pd.DataFrame(rows)
 
-    # Parsear todos los PDFs en memoria
-    dfs = [extract_variations(fn, st) for fn, st in pdf_files]
-    if not dfs:
-        return pd.DataFrame(columns=['producto','variacion','mes'])
-    df = pd.concat(dfs, ignore_index=True)
-    return df
+    # 3) Aplicar parser a cada PDF
+    dfs = [parse_anexo2(fn, stream) for fn, stream in pdf_list]
+    valid = [df for df in dfs if not df.empty]
+    if not valid:
+        return pd.DataFrame(columns=['producto', 'variacion', 'mes'])
+    return pd.concat(valid, ignore_index=True)
 
 # ========= STREAMLIT APP =========
 st.set_page_config(page_title="Monitor Canasta Básica", layout="wide")
 st.title("📊 Monitor Inteligente de la Canasta Básica de Alimentos")
 
-# Carga datos
 df = load_variaciones()
 if df.empty:
-    st.error("⚠️ No se pudo cargar ninguna variación. Verifica la conexión o la fuente.")
+    st.error("No se pudieron cargar datos. Verifica la conexión o la fuente.")
     st.stop()
 
-# Sidebar: selección de productos
+# Sidebar: filtro de productos
 st.sidebar.header("Filtros")
-productos_todos = sorted(df['producto'].unique())
-selected = st.sidebar.multiselect("Selecciona productos", productos_todos, default=productos_todos)
-df_sel = df[df['producto'].isin(selected)].copy()
+productos = sorted(df['producto'].unique())
+seleccion = st.sidebar.multiselect("Selecciona productos", productos, default=productos)
+df_sel = df[df['producto'].isin(seleccion)].copy()
 
-# Asegurar orden cronológico de meses
+# Ordenar meses cronológicamente
 df_sel['mes'] = pd.Categorical(df_sel['mes'], categories=MESES_ORDEN, ordered=True)
 
-# Construir tabla pivot con agregación para duplicados
+# Pivot con agregación para manejar duplicados
 chart_data = (
     df_sel
     .pivot_table(index='mes', columns='producto', values='variacion', aggfunc='mean')
     .reindex(index=MESES_ORDEN)
 )
 
-# Mostrar gráfico interactivo
+# Gráfico
 st.subheader("Variación Mensual por Producto")
 st.line_chart(chart_data)
 
-# Mostrar datos detallados
+# Tabla de datos
 st.subheader("Datos Detallados")
 st.dataframe(df_sel.reset_index(drop=True), use_container_width=True)
