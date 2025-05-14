@@ -1,72 +1,111 @@
 import streamlit as st
 import pandas as pd
-import pdfplumber, requests, os, re
+import pdfplumber
+import requests
 from bs4 import BeautifulSoup
+import re
 from io import BytesIO
 
-# --- Configuración ---
+# ========= CONFIGURACIÓN =========
 YEARS = {
     '2024': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2024',
     '2025': 'https://observatorio.ministeriodesarrollosocial.gob.cl/nueva-serie-cba-2025',
 }
-SKIP_PAGES = 1
-MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+SKIP_PAGES = 1  # páginas introductorias a omitir
+
+# Mapa de abreviaturas a nombres completos de mes
+MES_MAP = {
+    'ene':'Enero','feb':'Febrero','mar':'Marzo','abr':'Abril',
+    'may':'Mayo','jun':'Junio','jul':'Julio','ago':'Agosto',
+    'sep':'Septiembre','oct':'Octubre','nov':'Noviembre','dic':'Diciembre'
+}
+
 
 @st.cache_data(ttl=3600)
 def load_data():
-    # 1) Descargar PDFs en memoria
+    """
+    Descarga en memoria todos los PDFs de 2024 y 2025,
+    extrae las variaciones de 'Anexo 2' y devuelve un DataFrame.
+    """
     pdf_files = []
+
+    # 1) Descargar todos los PDFs en memoria
     for year, url in YEARS.items():
-        r = requests.get(url); r.raise_for_status()
+        r = requests.get(url)
+        r.raise_for_status()
         soup = BeautifulSoup(r.text, 'html.parser')
         for a in soup.find_all('a', href=True):
             href = a['href']
             text = a.get_text().lower()
-            if href.lower().endswith('.pdf') and year in (href+text):
-                pdf_url = requests.compat.urljoin(url, href)
-                resp = requests.get(pdf_url); resp.raise_for_status()
-                pdf_files.append((os.path.basename(pdf_url), BytesIO(resp.content)))
+            if href.lower().endswith('.pdf') and year in (href + text):
+                full_url = requests.compat.urljoin(url, href)
+                resp = requests.get(full_url)
+                resp.raise_for_status()
+                fname = full_url.split('/')[-1]
+                pdf_files.append((fname, BytesIO(resp.content)))
 
-    # 2) Funciones de extracción
-    def extract_variations(pdf_stream):
-        df = []
-        pattern = re.compile(r'^(.+?)\s+(-?\d+[.,]?\d*)$')
+    # 2) Definir parser de variaciones
+    def extract_variations(filename, pdf_stream):
+        records = []
+        in_table = False
+        pattern = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
+        # extraer abreviatura de mes del filename: _ENE_, _FEB_, etc.
+        m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', filename.lower())
+        mes_abbr = m.group(1) if m else ''
+
         with pdfplumber.open(pdf_stream) as pdf:
-            # detectar mes/año en nombre de archivo
-            # asumimos nombre algo como VALOR_cb_<MES>_<YYYY>.pdf
-            name = pdf_stream.name.lower()
-            match_m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', name)
-            mes = match_m.group(1) if match_m else 'mes'
             for i, page in enumerate(pdf.pages):
-                if i < SKIP_PAGES: continue
-                for line in (page.extract_text() or '').split('\n'):
-                    m = pattern.match(line.strip())
-                    if m:
-                        prod = m.group(1).strip()
-                        val  = float(m.group(2).replace(',','.'))
-                        df.append({'producto':prod,'variacion':val,'mes':mes})
-        return pd.DataFrame(df)
+                if i < SKIP_PAGES:
+                    continue
+                text = page.extract_text() or ''
+                for line in text.split('\n'):
+                    if 'Anexo 2' in line:
+                        in_table = True
+                        continue
+                    if not in_table:
+                        continue
+                    m2 = pattern.match(line.strip())
+                    if m2:
+                        prod = m2.group(1).strip()
+                        val  = float(m2.group(2).replace(',', '.'))
+                        records.append({
+                            'producto':  prod,
+                            'variacion': val,
+                            'mes':       mes_abbr
+                        })
+        return pd.DataFrame(records)
 
-    # 3) Parsear todos
-    dfs = [extract_variations(stream) for _, stream in pdf_files]
+    # 3) Parsear todos los streams
+    dfs = [extract_variations(fname, stream) for fname, stream in pdf_files]
+    if not dfs:
+        return pd.DataFrame(columns=['producto','variacion','mes'])
     full = pd.concat(dfs, ignore_index=True)
-    # Map mes abreviado a nombre completo
-    mapa = {'ene':'Enero','feb':'Febrero','mar':'Marzo','abr':'Abril',
-            'may':'Mayo','jun':'Junio','jul':'Julio','ago':'Agosto',
-            'sep':'Septiembre','oct':'Octubre','nov':'Noviembre','dic':'Diciembre'}
-    full['mes'] = full['mes'].map(mapa).fillna(full['mes'].str.title())
+
+    # 4) Mapear abreviatura a nombre completo
+    full['mes'] = full['mes'].map(MES_MAP).fillna(full['mes'].str.title())
     return full
 
-# --- App UI ---
-st.title("Monitor Inteligente de la Canasta Básica (Streamlit)")
+
+# ========= STREAMLIT UI =========
+st.set_page_config(page_title="Monitor Canasta Básica", layout="wide")
+st.title("📊 Monitor Inteligente de la Canasta Básica de Alimentos")
+
 df = load_data()
-st.sidebar.header("Productos")
-productos = st.sidebar.multiselect("Elige productos", df['producto'].unique(), default=df['producto'].unique())
-df_sel = df[df['producto'].isin(productos)]
 
-# Gráfico
-chart_data = df_sel.pivot(index='mes', columns='producto', values='variacion')
-st.line_chart(chart_data)
+if df.empty:
+    st.error("No se pudieron cargar datos. Revisa tu conexión o la fuente.")
+else:
+    st.sidebar.header("Filtros")
+    productos = st.sidebar.multiselect(
+        "Selecciona productos",
+        options=sorted(df['producto'].unique()),
+        default=sorted(df['producto'].unique())
+    )
+    df_sel = df[df['producto'].isin(productos)]
 
-# Tabla de datos
-st.dataframe(df_sel)
+    st.subheader("Variación Mensual por Producto")
+    chart_data = df_sel.pivot(index='mes', columns='producto', values='variacion')
+    st.line_chart(chart_data)
+
+    st.subheader("Datos Detallados")
+    st.dataframe(df_sel.reset_index(drop=True), use_container_width=True)
