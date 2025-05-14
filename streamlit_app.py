@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import requests
-from bs4 import BeautifulSoup
 import re
+from bs4 import BeautifulSoup
 from io import BytesIO
 
 # ========= CONFIGURACIÓN =========
@@ -26,34 +26,37 @@ MESES_ORDEN = list(MES_MAP.values())
 
 @st.cache_data(ttl=3600)
 def load_data():
-    """Descarga y parsea los PDFs de 2024 y 2025 en memoria."""
+    """Descarga y parsea todos los PDFs de 2024 y 2025 en memoria."""
     pdf_files = []
+    # 1) Descargar
     for year, url in YEARS.items():
         resp = requests.get(url); resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         for a in soup.find_all('a', href=True):
             href = a['href']
-            text = a.get_text().lower()
-            if href.lower().endswith('.pdf') and year in (href + text):
+            txt = a.get_text().lower()
+            if href.lower().endswith('.pdf') and year in (href + txt):
                 full_url = requests.compat.urljoin(url, href)
                 r2 = requests.get(full_url); r2.raise_for_status()
                 fname = full_url.split('/')[-1]
                 pdf_files.append((fname, BytesIO(r2.content)))
 
+    # 2) Parser de variaciones
     def extract_variations(filename, pdf_stream):
-        """Extrae variaciones de Anexo 2 de un PDF dado."""
         records = []
         in_table = False
         pat = re.compile(r"^(.+?)\s+(-?\d+[.,]?\d*)$")
+        # extraer abreviatura de mes y convertir a nombre completo
         m = re.search(r'_(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)_', filename.lower())
         mes_abbr = m.group(1) if m else ''
+        mes_full = MES_MAP.get(mes_abbr, mes_abbr.title())
+
         with pdfplumber.open(pdf_stream) as pdf:
             for i, page in enumerate(pdf.pages):
                 if i < SKIP_PAGES:
                     continue
-                text = page.extract_text() or ''
-                for line in text.split('\n'):
-                    if 'Anexo 2' in line:
+                for line in (page.extract_text() or '').split('\n'):
+                    if 'anexo 2' in line.lower():
                         in_table = True
                         continue
                     if not in_table:
@@ -65,17 +68,15 @@ def load_data():
                         records.append({
                             'producto':  prod,
                             'variacion': val,
-                            'mes':       mes_abbr
+                            'mes':       mes_full
                         })
         return pd.DataFrame(records)
 
-    # Parsear todos los PDFs
-    dfs = [extract_variations(fname, stream) for fname, stream in pdf_files]
+    # 3) Aplicar parser a todos los PDFs
+    dfs = [extract_variations(fn, st) for fn, st in pdf_files]
     if not dfs:
         return pd.DataFrame(columns=['producto','variacion','mes'])
     df = pd.concat(dfs, ignore_index=True)
-    # Mapear abreviaturas a nombres completos
-    df['mes'] = df['mes'].map(MES_MAP).fillna(df['mes'].str.title())
     return df
 
 
@@ -88,7 +89,7 @@ if df.empty:
     st.error("No se pudieron cargar datos. Revisa tu conexión o la fuente.")
     st.stop()
 
-# Filtros de producto
+# Sidebar: selección de productos
 st.sidebar.header("Filtros")
 productos = st.sidebar.multiselect(
     "Selecciona productos",
