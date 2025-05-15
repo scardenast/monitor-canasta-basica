@@ -9,8 +9,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # ====== CONFIGURACIÓN ======
-# Intentar cargar datos desde este año. La fuente parece tener datos consistentes desde 2013.
-START_YEAR_DATA = 2013
+# Intentar cargar datos desde este año.
+START_YEAR_DATA = 2015
 current_year = datetime.date.today().year
 YEARS = {}
 for year_num in range(START_YEAR_DATA, current_year + 1):
@@ -99,7 +99,6 @@ PRESIDENTIAL_PERIODS = {
     "Gabriel Boric (Mar 2022 - Actualidad)": {"start_year": 2022, "start_month": 3, "end_year": current_year, "end_month": datetime.date.today().month},
     "Sebastián Piñera (Mar 2018 - Mar 2022)": {"start_year": 2018, "start_month": 3, "end_year": 2022, "end_month": 3},
     "Michelle Bachelet (Mar 2014 - Mar 2018)": {"start_year": 2014, "start_month": 3, "end_year": 2018, "end_month": 3},
-    "Sebastián Piñera (Mar 2010 - Mar 2014)": {"start_year": 2010, "start_month": 3, "end_year": 2014, "end_month": 3}, # Datos desde START_YEAR_DATA (2013)
 }
 
 
