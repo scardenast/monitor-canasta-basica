@@ -7,42 +7,190 @@ from io import BytesIO
 import datetime
 import plotly.express as px
 import plotly.graph_objects as go
+from typing import Dict, List, Optional, Tuple
 
-# ====== CONFIGURACIÓN ======
-# Intentar cargar datos desde este año.
+# ====== CONFIGURACIÓN DE DISEÑO Y ESTILO ======
+# Paleta de colores (ejemplo)
+COLOR_PRIMARY_TEXT = "#0A2342"  # Azul oscuro para texto principal
+COLOR_SECONDARY_TEXT = "#555555" # Gris medio para texto secundario
+COLOR_ACCENT = "#007BFF"         # Azul brillante para acentos y gráficos
+COLOR_ACCENT_SUCCESS = "#28A745" # Verde para alzas
+COLOR_ACCENT_DANGER = "#DC3545"  # Rojo para bajas
+COLOR_BACKGROUND_MAIN = "#FFFFFF"
+COLOR_BACKGROUND_SIDEBAR = "#F0F2F6" # Gris muy claro para la sidebar
+COLOR_BORDER = "#DEE2E6"
+FONT_FAMILY_SANS_SERIF = "Inter, sans-serif"
+
+# Logo (reemplazar con la URL o ruta a tu logo)
+APP_LOGO_URL = "https://www.shareicon.net/data/2015/10/02/110087_analysis_512x512.png" # Placeholder icon
+
+# CSS Personalizado
+CUSTOM_CSS = f"""
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+body {{
+    font-family: {FONT_FAMILY_SANS_SERIF};
+    color: {COLOR_PRIMARY_TEXT};
+    background-color: {COLOR_BACKGROUND_MAIN};
+}}
+
+/* --- Encabezado --- */
+.app-header {{
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Centra el título si no hay logo o el logo es pequeño */
+    padding: 10px 20px;
+    border-bottom: 1px solid {COLOR_BORDER};
+    margin-bottom: 20px;
+    background-color: {COLOR_BACKGROUND_MAIN};
+}}
+.app-header img.logo {{
+    height: 40px;
+    margin-right: 15px;
+}}
+.app-header .title {{
+    font-size: 1.8em;
+    font-weight: 600;
+    color: {COLOR_PRIMARY_TEXT};
+    text-align: center;
+    flex-grow: 1; /* Permite que el título ocupe espacio y se centre */
+}}
+
+/* --- Barra Lateral --- */
+[data-testid="stSidebar"] {{
+    background-color: {COLOR_BACKGROUND_SIDEBAR};
+    padding: 15px;
+}}
+[data-testid="stSidebar"] .stMarkdown h1,
+[data-testid="stSidebar"] .stMarkdown h2,
+[data-testid="stSidebar"] .stMarkdown h3,
+[data-testid="stSidebar"] .stMarkdown p {{
+    font-family: {FONT_FAMILY_SANS_SERIF};
+    color: {COLOR_PRIMARY_TEXT};
+}}
+[data-testid="stSidebar"] .stMarkdown h3 {{
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: {COLOR_ACCENT};
+    border-bottom: 1px solid {COLOR_BORDER};
+    padding-bottom: 5px;
+}}
+
+/* --- Métricas (KPIs) --- */
+div[data-testid="stMetric"] {{
+    background-color: #FFFFFF;
+    border: 1px solid {COLOR_BORDER};
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}}
+div[data-testid="stMetric"] label p {{ /* Estilo para la etiqueta del KPI */
+    font-size: 0.95em !important;
+    font-weight: 500 !important;
+    color: {COLOR_SECONDARY_TEXT} !important;
+}}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{ /* Estilo para el valor del KPI */
+    font-size: 1.8em !important;
+    font-weight: 700 !important;
+    color: {COLOR_ACCENT} !important;
+}}
+/* Colores específicos para delta (si se usa) */
+div[data-testid="stMetric"] div.st-emotion-cache-1g6goys {{ /* Selector para el delta positivo */
+    color: {COLOR_ACCENT_SUCCESS} !important;
+}}
+div[data-testid="stMetric"] div.st-emotion-cache-mcjb54 {{ /* Selector para el delta negativo */
+    color: {COLOR_ACCENT_DANGER} !important;
+}}
+
+
+/* --- Títulos y Texto General --- */
+h1, h2, h3 {{
+    font-family: {FONT_FAMILY_SANS_SERIF};
+    color: {COLOR_PRIMARY_TEXT};
+    font-weight: 600;
+}}
+h1 {{ font-size: 2em; margin-bottom: 0.7em; }}
+h2 {{ font-size: 1.5em; margin-top: 1.5em; margin-bottom: 0.6em; color: {COLOR_PRIMARY_TEXT}; border-bottom: 2px solid {COLOR_ACCENT}; padding-bottom: 0.2em;}}
+h3 {{ font-size: 1.2em; margin-top: 1.2em; margin-bottom: 0.5em; color: {COLOR_SECONDARY_TEXT};}}
+
+.stButton>button {{
+    border-radius: 6px !important;
+    background-color: {COLOR_ACCENT} !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 16px !important;
+}}
+.stButton>button:hover {{
+    opacity: 0.85;
+}}
+.stSelectbox [data-baseweb="select"] > div {{
+    border-radius: 6px !important;
+    border-color: {COLOR_BORDER} !important;
+}}
+.stMultiSelect [data-baseweb="select"] > div {{
+    border-radius: 6px !important;
+    border-color: {COLOR_BORDER} !important;
+}}
+
+/* --- Contenedores y Secciones --- */
+.section-container {{
+    padding: 20px;
+    background-color: #FFFFFF; /* Fondo blanco para secciones dentro del gris claro */
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    margin-bottom: 25px;
+}}
+.interpretation-text {{
+    font-size: 0.95em;
+    color: {COLOR_SECONDARY_TEXT};
+    line-height: 1.6;
+}}
+.stCaption p {{
+    color: {COLOR_SECONDARY_TEXT} !important;
+    font-size: 0.85em !important;
+}}
+
+/* Ocultar el "Made with Streamlit" del footer */
+footer {{
+    visibility: hidden;
+}}
+/* Opcional: Añadir un footer personalizado si se desea */
+.custom-footer {{
+    text-align: center;
+    padding: 10px;
+    font-size: 0.8em;
+    color: {COLOR_SECONDARY_TEXT};
+    border-top: 1px solid {COLOR_BORDER};
+}}
+
+"""
+
+# ====== CONFIGURACIÓN DE DATOS ======
 START_YEAR_DATA = 2015
 current_year = datetime.date.today().year
-YEARS = {}
+MAX_YEARS_CONFIG: Dict[str, List[str]] = {}
 for year_num in range(START_YEAR_DATA, current_year + 1):
     year_str = str(year_num)
     if year_num < current_year:
-        # Todos los meses para años pasados completos
-        YEARS[year_str] = [f"{i:02d}" for i in range(1, 13)]
+        MAX_YEARS_CONFIG[year_str] = [f"{i:02d}" for i in range(1, 13)]
     else:
-        # Hasta el mes actual (o el anterior si el actual no está disponible) para el año en curso
-        # Consideramos que el informe del mes M se publica en M+1, así que tomamos el mes anterior como referencia segura.
-        # Si estamos en Enero, tomamos Diciembre del año anterior.
         current_month_for_data = datetime.date.today().month
-        if datetime.date.today().day < 15: # Si es antes de mediados de mes, es menos probable que esté el informe del mes anterior
-             current_month_for_data -=1
-        if current_month_for_data == 0: # Si era Enero y restamos 1, vamos a Diciembre del año pasado (ya cubierto por el loop)
-            if str(current_year -1) in YEARS: # Asegurar que el año anterior esté en YEARS
-                 YEARS[str(current_year -1)] = [f"{i:02d}" for i in range(1, 13)]
-            # Para el año actual, si es Enero y no hay datos, no agregar meses.
-            if year_str == str(current_year) and current_month_for_data == 0 :
-                pass # No agregar meses para el año actual si es Enero muy temprano
-            else:
-                 YEARS[year_str] = [f"{i:02d}" for i in range(1, current_month_for_data + 1 if current_month_for_data > 0 else 0)]
+        if datetime.date.today().day < 20: # Asumir que los datos del mes anterior están disponibles después del día 20
+            current_month_for_data -= 1
+        if current_month_for_data == 0:
+            if str(current_year - 1) in MAX_YEARS_CONFIG:
+                 MAX_YEARS_CONFIG[str(current_year - 1)] = [f"{i:02d}" for i in range(1, 13)]
+            if year_str == str(current_year): # No agregar meses para el año actual si es Enero muy temprano
+                 MAX_YEARS_CONFIG[year_str] = [] # Inicializar vacío
         else:
-            YEARS[year_str] = [f"{i:02d}" for i in range(1, current_month_for_data + 1)]
-
+            MAX_YEARS_CONFIG[year_str] = [f"{i:02d}" for i in range(1, current_month_for_data + 1)]
 
 SKIP_PAGES = 4
 NUM2MONTH = {
-    '01': 'Enero', '02': 'Febrero', '03': 'Marzo',
-    '04': 'Abril', '05': 'Mayo', '06': 'Junio',
-    '07': 'Julio', '08': 'Agosto', '09': 'Septiembre',
-    '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
+    '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril', '05': 'Mayo', '06': 'Junio',
+    '07': 'Julio', '08': 'Agosto', '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
 }
 LINE_REGEX = re.compile(r"^(.+?)\s+(-?\d+[.,]\d+)$")
 
@@ -74,7 +222,7 @@ FIXED_PRODUCTS = [
 PRODUCT_CATEGORIES = {
     "Cereales y Harinas": ["Arroz", "Harina de trigo", "Avena", "Espiral"],
     "Panadería y Masas": ["Pan corriente sin envasar", "Torta 15 o 20 personas", "Prepizza familiar", "Biscochos dulces y medialunas", "Tostadas (palta o mantequilla o mermelada o mezcla de estas)"],
-    "Carnes Rojas y Procesados": ["Carne molida", "Chuleta de cerdo centro o vetada", "Costillar de cerdo", "Pulpa de cerdo", "Jamón de cerdo", "Longaniza", "Salchicha y vienesa tradicional", "Pate", "Aliado (jamón queso) o Barros Jarpa", "Asiento"], # Asiento agregado
+    "Carnes Rojas y Procesados": ["Carne molida", "Chuleta de cerdo centro o vetada", "Costillar de cerdo", "Pulpa de cerdo", "Jamón de cerdo", "Longaniza", "Salchicha y vienesa tradicional", "Pate", "Aliado (jamón queso) o Barros Jarpa", "Asiento"],
     "Aves y Derivados": ["Pollo entero", "Pechuga de pollo", "Trutro de pollo", "Carne de pavo molida", "Salchicha y vienesa de ave", "Pollo asado entero"],
     "Cordero": ["Pulpa de cordero fresco o refrigerado"],
     "Pescados y Mariscos": ["Merluza fresca o refrigerada", "Choritos frescos o refrigerados en su concha", "Jurel en conserva", "Surtido en conserva"],
@@ -83,395 +231,577 @@ PRODUCT_CATEGORIES = {
     "Frutas": ["Plátano", "Manzana", "Limón", "Palta"],
     "Legumbres y Frutos Secos": ["Poroto", "Lenteja", "Maní salado"],
     "Verduras y Tubérculos": ["Lechuga", "Zapallo", "Tomate", "Zanahoria", "Cebolla nueva", "Papa de guarda", "Choclo congelado"],
-    "Azúcares y Dulces": ["Azúcar", "Chocolate", "Caramelo", "Helado familiar un sabor", "Galleta dulce"], # Galleta dulce agregada
-    "Snacks Salados": ["Galleta no dulce", "Papas fritas"], # Nueva categoría para Galleta no dulce
+    "Azúcares y Dulces": ["Azúcar", "Chocolate", "Caramelo", "Helado familiar un sabor", "Galleta dulce"],
+    "Snacks Salados": ["Galleta no dulce", "Papas fritas"],
     "Salsas y Condimentos": ["Salsa de tomate"],
-    "Bebestibles (Café, Té)": ["Sucedáneo de café", "Te para preparar", "Té corriente"], # Categoría renombrada y Té corriente agregado
+    "Bebestibles (Café, Té)": ["Sucedáneo de café", "Te para preparar", "Té corriente"],
     "Bebidas Frías y Refrescos": ["Agua mineral", "Bebida gaseosa tradicional", "Bebida energizante", "Refresco isotónico", "Jugo líquido", "Néctar líquido", "Refresco en polvo"],
-    "Comidas Preparadas y Rápidas": ["Completo", "Entrada (ensalada o sopa)", "Postre para almuerzo", "Promoción de comida rápida", "Empanada de horno", "Colación o menú del día o almuerzo ejecutivo", "Plato de fondo para almuerzo"], # Categoría renombrada
-    "Sin Categoría": []
+    "Comidas Preparadas y Rápidas": ["Completo", "Entrada (ensalada o sopa)", "Postre para almuerzo", "Promoción de comida rápida", "Empanada de horno", "Colación o menú del día o almuerzo ejecutivo", "Plato de fondo para almuerzo"],
+    "Sin Categoría": [] # Se poblará automáticamente
 }
 
-# Definición de Periodos Presidenciales (Chile)
-# Considerar que los datos de la fuente pueden empezar en START_YEAR_DATA
 PRESIDENTIAL_PERIODS = {
     "Todos los Periodos": None,
     "Gabriel Boric (Mar 2022 - Actualidad)": {"start_year": 2022, "start_month": 3, "end_year": current_year, "end_month": datetime.date.today().month},
-    "Sebastián Piñera (Mar 2018 - Mar 2022)": {"start_year": 2018, "start_month": 3, "end_year": 2022, "end_month": 3},
-    "Michelle Bachelet (Mar 2014 - Mar 2018)": {"start_year": 2014, "start_month": 3, "end_year": 2018, "end_month": 3},
+    "Sebastián Piñera II (Mar 2018 - Mar 2022)": {"start_year": 2018, "start_month": 3, "end_year": 2022, "end_month": 3},
+    "Michelle Bachelet II (Mar 2014 - Mar 2018)": {"start_year": 2014, "start_month": 3, "end_year": 2018, "end_month": 3},
+    # Añadir más periodos si START_YEAR_DATA lo permite y se tienen los datos
 }
+# Filtrar periodos presidenciales para que solo incluyan años desde START_YEAR_DATA
+VALID_PRESIDENTIAL_PERIODS = {"Todos los Periodos": None}
+for name, details in PRESIDENTIAL_PERIODS.items():
+    if name == "Todos los Periodos": continue
+    if details and details["end_year"] >= START_YEAR_DATA:
+        # Ajustar el año de inicio si es anterior a START_YEAR_DATA
+        if details["start_year"] < START_YEAR_DATA:
+            adjusted_details = details.copy()
+            adjusted_details["start_year"] = START_YEAR_DATA
+            adjusted_details["start_month"] = 1 # Empezar desde enero del START_YEAR_DATA
+            VALID_PRESIDENTIAL_PERIODS[name] = adjusted_details
+        else:
+            VALID_PRESIDENTIAL_PERIODS[name] = details
 
 
-@st.cache_data(ttl=3600 * 6)
-def fetch_pdf_content_cached(url):
+# ====== FUNCIONES DE CARGA Y PROCESAMIENTO DE DATOS ======
+@st.cache_data(ttl=3600 * 12) # Cachear PDFs por 12 horas
+def fetch_pdf_content_cached(url: str) -> Optional[bytes]:
     try:
-        r = requests.get(url, timeout=15)
+        r = requests.get(url, timeout=20)
         r.raise_for_status()
         return r.content
     except requests.exceptions.RequestException:
         return None
 
-@st.cache_data(ttl=3600 * 2) # Cachear datos procesados por 2 horas
-def load_data(years_config):
+@st.cache_data(ttl=3600 * 4) # Cachear datos procesados por 4 horas
+def load_data(years_to_fetch_config: Dict[str, List[str]]) -> pd.DataFrame:
     rows = []
-    sorted_years_keys = sorted(years_config.keys())
+    # st.write(f"Debug: load_data called with years_to_fetch_config: {years_to_fetch_config}") # Para depuración
+    sorted_years_keys = sorted(years_to_fetch_config.keys())
 
-    for year in sorted_years_keys:
-        meses = years_config[year]
-        if not meses: # Si no hay meses para este año (ej. año actual muy temprano)
-            continue
-        short_year = year[2:]
-        for mm in meses:
+    for year_str in sorted_years_keys:
+        meses_str = years_to_fetch_config[year_str]
+        if not meses_str: continue
+        short_year = year_str[2:]
+        for mm_str in meses_str:
             url = (
                 f"https://observatorio.ministeriodesarrollosocial.gob.cl"
-                f"/storage/docs/cba/nueva_serie/{year}"
-                f"/Valor_CBA_y_LPs_{short_year}.{mm}.pdf"
+                f"/storage/docs/cba/nueva_serie/{year_str}"
+                f"/Valor_CBA_y_LPs_{short_year}.{mm_str}.pdf"
             )
             pdf_bytes = fetch_pdf_content_cached(url)
-            if not pdf_bytes:
-                continue
+            if not pdf_bytes: continue
 
-            month_name = NUM2MONTH[mm]
+            month_name = NUM2MONTH[mm_str]
             try:
                 with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
                     for i, page in enumerate(pdf.pages):
-                        if i < SKIP_PAGES:
-                            continue
+                        if i < SKIP_PAGES: continue
                         page_text = page.extract_text() or ""
                         for line in page_text.split("\n"):
                             match = LINE_REGEX.match(line.strip())
-                            if not match:
-                                continue
+                            if not match: continue
                             product_name = match.group(1).strip()
                             try:
                                 value = float(match.group(2).replace(",", "."))
-                            except ValueError:
-                                continue
-                            if product_name.lower() == "cba":
-                                continue
-                            if product_name not in FIXED_PRODUCTS:
-                                continue
-                            if abs(value) > 200:
-                                continue
+                            except ValueError: continue
+                            if product_name.lower() == "cba": continue
+                            if product_name not in FIXED_PRODUCTS: continue
+                            if abs(value) > 250: continue # Umbral amplio
                             rows.append({
-                                "year": int(year), # Convertir a int para facilitar comparaciones
-                                "mes_num": int(mm), # Guardar número de mes para orden y filtros
+                                "year": int(year_str),
+                                "mes_num": int(mm_str),
                                 "mes": month_name,
                                 "producto": product_name,
                                 "variacion": value
                             })
-            except Exception:
+            except Exception: # pylint: disable=broad-except
+                # Consider logging this error if running in production
+                # st.warning(f"Error procesando PDF para {month_name} {year_str}. URL: {url}. Error: {e}")
                 continue
     
     df = pd.DataFrame(rows)
-    if df.empty:
-        return df
+    if df.empty: return df
     
-    # Asegurar tipos correctos para columnas clave
     df['year'] = df['year'].astype(int)
     df['mes_num'] = df['mes_num'].astype(int)
+    return df.drop_duplicates(subset=["year", "mes_num", "producto"], keep='first')
 
-    return df.drop_duplicates(subset=["year", "mes", "producto"], keep='first')
-
-
-def calculate_yearly_cumulative_variation(df_product_year):
-    if df_product_year.empty:
-        return 0.0
-    df_sorted = df_product_year.copy().sort_values('mes_num')
+def calculate_period_cumulative_variation(df_period_product: pd.DataFrame) -> float:
+    """Calcula la variación acumulada para un producto sobre un período de varios meses/años."""
+    if df_period_product.empty: return 0.0
+    
+    # Asegurar orden cronológico
+    df_sorted = df_period_product.sort_values(['year', 'mes_num'])
+    
     cumulative_factor = 1.0
-    for var in df_sorted['variacion']:
-        cumulative_factor *= (1 + var / 100.0)
+    for var_monthly in df_sorted['variacion']:
+        cumulative_factor *= (1 + var_monthly / 100.0)
     return (cumulative_factor - 1) * 100.0
 
-# ====== CONFIGURACIÓN DE LA PÁGINA ======
-st.set_page_config(page_title="Monitor Canasta Básica Chile", layout="wide")
-st.title("📊 Monitor Inteligente de la Canasta Básica de Alimentos - Chile")
-
-with st.spinner("🔄 Cargando y procesando datos de los PDFs… Esto puede tardar unos momentos, especialmente la primera vez o con rangos amplios de años."):
-    df_data_full = load_data(YEARS) # Cargar todos los datos según YEARS
-
-if df_data_full.empty:
-    st.error("⚠️ No se encontraron datos para los productos y periodos configurados. Verifica `FIXED_PRODUCTS`, la configuración de `YEARS` y la disponibilidad de los PDFs en la fuente.")
-    st.stop()
-
-# Convertir 'year' a string para consistencia con filtros que esperan strings, pero mantener datos numéricos para lógica
-df_display_data = df_data_full.copy()
-df_display_data['year'] = df_display_data['year'].astype(str)
-
-
-# ====== BARRA LATERAL DE FILTROS ======
-st.sidebar.header("Filtros de Visualización")
-
-# --- Filtro por Período Presidencial ---
-selected_presidential_period_name = st.sidebar.selectbox(
-    "Periodo Presidencial",
-    options=list(PRESIDENTIAL_PERIODS.keys()),
-    index=0 # Default a "Todos los Periodos"
-)
-selected_period_details = PRESIDENTIAL_PERIODS[selected_presidential_period_name]
-
-# Filtrar df_display_data si se selecciona un período presidencial específico
-df_filtered_by_presidency = df_display_data.copy()
-if selected_period_details:
-    start_year = selected_period_details["start_year"]
-    start_month = selected_period_details["start_month"]
-    end_year = selected_period_details["end_year"]
-    end_month = selected_period_details["end_month"]
-
-    # Crear una columna de fecha para facilitar el filtrado por rango presidencial
-    # Usamos el día 1 como referencia, ya que solo necesitamos mes y año.
-    # Convertir 'year' y 'mes_num' de df_data_full (que son int) para esta comparación
-    
-    df_temp_for_presidency_filter = df_data_full.copy()
-    # Asegurar que no haya errores si mes_num es 0 o inválido (aunque no debería pasar con la carga actual)
-    df_temp_for_presidency_filter = df_temp_for_presidency_filter[df_temp_for_presidency_filter['mes_num'].between(1,12)]
-
-    df_temp_for_presidency_filter["fecha_periodo"] = pd.to_datetime(
-        df_temp_for_presidency_filter['year'].astype(str) + '-' + 
-        df_temp_for_presidency_filter['mes_num'].astype(str) + '-01',
-        format='%Y-%m-%d'
-    )
-    
-    start_date = pd.to_datetime(f"{start_year}-{start_month:02d}-01")
-    # Para el mes final, queremos incluir todo el mes, así que vamos al primer día del siguiente mes.
-    if end_month == 12:
-        end_date_limit = pd.to_datetime(f"{end_year + 1}-01-01")
-    else:
-        end_date_limit = pd.to_datetime(f"{end_year}-{end_month + 1:02d}-01")
-
-    df_temp_for_presidency_filter = df_temp_for_presidency_filter[
-        (df_temp_for_presidency_filter["fecha_periodo"] >= start_date) &
-        (df_temp_for_presidency_filter["fecha_periodo"] < end_date_limit)
-    ]
-    
-    # Recrear df_filtered_by_presidency a partir de los datos filtrados por presidencia
-    # y convertir 'year' de nuevo a string para los selectores de multiselect.
-    df_filtered_by_presidency = df_temp_for_presidency_filter.copy()
-    df_filtered_by_presidency['year'] = df_filtered_by_presidency['year'].astype(str)
-    # Quitar la columna temporal
-    if 'fecha_periodo' in df_filtered_by_presidency.columns:
-       df_filtered_by_presidency = df_filtered_by_presidency.drop(columns=['fecha_periodo'])
-
-
-# --- Filtro por Año ---
-# Usar los años disponibles DESPUÉS de filtrar por presidencia
-available_years_in_filtered_df = sorted(df_filtered_by_presidency["year"].unique(), reverse=True)
-if not available_years_in_filtered_df and selected_period_details:
-    st.sidebar.warning(f"No hay datos disponibles para el periodo presidencial '{selected_presidential_period_name}' con los años cargados ({START_YEAR_DATA}-{current_year}).")
-    selected_years = []
-elif not available_years_in_filtered_df:
-    st.sidebar.warning("No hay años con datos disponibles.")
-    selected_years = []
-else:
-    # Si se seleccionó un periodo presidencial, los años por defecto son todos los de ese periodo.
-    # Sino, el año más reciente.
-    default_years_selection = available_years_in_filtered_df if selected_period_details else [available_years_in_filtered_df[0]]
-    selected_years = st.sidebar.multiselect("Año(s)", available_years_in_filtered_df, default=default_years_selection)
-
-
-# --- Filtro por Mes ---
-if selected_years:
-    months_in_selected_years = df_filtered_by_presidency[df_filtered_by_presidency["year"].isin(selected_years)]["mes"].unique()
-    ordered_available_months = sorted(months_in_selected_years, key=lambda m: list(NUM2MONTH.values()).index(m))
-    selected_months = st.sidebar.multiselect("Mes(es)", ordered_available_months, default=ordered_available_months)
-else:
-    selected_months = []
-    ordered_available_months = []
-
-
-# --- Filtro de Productos por Categoría ---
-st.sidebar.subheader("Filtro de Productos")
-products_found_in_data = sorted(df_filtered_by_presidency["producto"].unique()) # Usar productos del DF ya filtrado por presidencia/años
-master_list_of_selectable_products = [p for p in FIXED_PRODUCTS if p in products_found_in_data]
-
-if not master_list_of_selectable_products:
-    st.sidebar.warning("No se encontraron datos para los productos definidos en `FIXED_PRODUCTS` con los filtros actuales.")
-    selected_products = []
-else:
-    categorized_prods_flat = {prod for cat_name, cat_prods in PRODUCT_CATEGORIES.items() if cat_name != "Sin Categoría" for prod in cat_prods}
-    PRODUCT_CATEGORIES["Sin Categoría"] = sorted([
-        p for p in master_list_of_selectable_products if p not in categorized_prods_flat
-    ])
-    active_categories = {
-        cat: sorted([p for p in prods if p in master_list_of_selectable_products])
-        for cat, prods in PRODUCT_CATEGORIES.items()
+def get_presidential_kpis(df_presidency_scope: pd.DataFrame, all_products_in_period_scope: pd.DataFrame, selected_prods_for_avg: List[str]) -> Dict:
+    kpis = {
+        "avg_cumulative_variation": None,
+        "max_increase_product": None, "max_increase_value": None,
+        "max_decrease_product": None, "max_decrease_value": None,
     }
-    active_categories = {cat: prods for cat, prods in active_categories.items() if prods}
-    category_options = ["Todas"] + sorted(list(active_categories.keys()))
-    selected_category_option = st.sidebar.selectbox("Categoría de Producto", category_options, index=0)
+    if df_presidency_scope.empty: return kpis
 
-    products_for_multiselect = []
-    if selected_category_option == "Todas":
-        products_for_multiselect = master_list_of_selectable_products
-    elif selected_category_option in active_categories:
-        products_for_multiselect = active_categories[selected_category_option]
-    products_for_multiselect = sorted(list(set(products_for_multiselect)))
+    # 1. Variación acumulada promedio (para productos seleccionados en el filtro general)
+    cumulative_variations_selected_prods = []
+    if selected_prods_for_avg:
+        for prod in selected_prods_for_avg:
+            df_prod_period = df_presidency_scope[df_presidency_scope['producto'] == prod]
+            if not df_prod_period.empty:
+                cum_var = calculate_period_cumulative_variation(df_prod_period)
+                cumulative_variations_selected_prods.append(cum_var)
+        if cumulative_variations_selected_prods:
+            kpis["avg_cumulative_variation"] = sum(cumulative_variations_selected_prods) / len(cumulative_variations_selected_prods)
 
-    if not products_for_multiselect:
-        st.sidebar.info("No hay productos disponibles para la categoría seleccionada con los filtros actuales.")
-        selected_products = []
-    else:
-        selected_products = st.sidebar.multiselect(
-            f"Producto(s) en '{selected_category_option}'",
-            products_for_multiselect,
-            default=products_for_multiselect
+    # 2. Producto con mayor alza/baja (considerando TODOS los productos en FIXED_PRODUCTS que tengan datos en el periodo)
+    product_cumulative_variations = {}
+    # Usar all_products_in_period_scope que ya está filtrado por el periodo presidencial
+    for prod_name in all_products_in_period_scope['producto'].unique():
+        df_prod_full_period = all_products_in_period_scope[all_products_in_period_scope['producto'] == prod_name]
+        if not df_prod_full_period.empty:
+            product_cumulative_variations[prod_name] = calculate_period_cumulative_variation(df_prod_full_period)
+    
+    if product_cumulative_variations:
+        max_prod = max(product_cumulative_variations, key=product_cumulative_variations.get)
+        min_prod = min(product_cumulative_variations, key=product_cumulative_variations.get)
+        kpis["max_increase_product"] = max_prod
+        kpis["max_increase_value"] = product_cumulative_variations[max_prod]
+        kpis["max_decrease_product"] = min_prod
+        kpis["max_decrease_value"] = product_cumulative_variations[min_prod]
+        
+    return kpis
+
+def generate_years_to_load_from_filters(
+    presidency_details: Optional[Dict], 
+    selected_years_override: Optional[List[str]]
+    ) -> Dict[str, List[str]]:
+    """
+    Determina qué años y meses cargar basado en el período presidencial o selección manual de años.
+    """
+    years_config = {}
+    
+    min_year_to_consider = START_YEAR_DATA
+    max_year_to_consider = current_year
+
+    target_start_year, target_start_month = min_year_to_consider, 1
+    target_end_year, target_end_month = max_year_to_consider, 12
+
+    if presidency_details: # Filtro presidencial tiene prioridad para definir el rango general
+        target_start_year = max(min_year_to_consider, presidency_details["start_year"])
+        target_start_month = presidency_details["start_month"] if presidency_details["start_year"] >= min_year_to_consider else 1
+        target_end_year = min(max_year_to_consider, presidency_details["end_year"])
+        target_end_month = presidency_details["end_month"]
+    elif selected_years_override: # Si no hay periodo presidencial, usar los años del multiselect
+        # En este caso, cargaremos todos los meses de los años seleccionados.
+        # El filtrado por meses específicos se hará después de cargar los datos de estos años.
+        for year_str_override in selected_years_override:
+            year_int_override = int(year_str_override)
+            if min_year_to_consider <= year_int_override <= max_year_to_consider:
+                years_config[year_str_override] = MAX_YEARS_CONFIG.get(year_str_override, [f"{m:02d}" for m in range(1,13)])
+        return years_config # Retornar directamente si se usan años de override
+    else: # Caso por defecto (ej. "Todos los periodos" sin años seleccionados manualmente)
+        # Cargar todo el rango definido en MAX_YEARS_CONFIG
+         return MAX_YEARS_CONFIG.copy()
+
+
+    # Construir la configuración de años y meses para el rango presidencial
+    for year_num in range(target_start_year, target_end_year + 1):
+        year_s = str(year_num)
+        year_months = []
+        
+        start_m = target_start_month if year_num == target_start_year else 1
+        end_m = target_end_month if year_num == target_end_year else 12
+        
+        # Usar los meses disponibles en MAX_YEARS_CONFIG como base para no pedir meses inexistentes
+        available_months_for_year = MAX_YEARS_CONFIG.get(year_s, [])
+        
+        for month_num in range(start_m, end_m + 1):
+            month_s = f"{month_num:02d}"
+            if month_s in available_months_for_year:
+                year_months.append(month_s)
+        
+        if year_months:
+            years_config[year_s] = year_months
+            
+    return years_config
+
+# ====== INICIALIZACIÓN DE LA APP ======
+st.set_page_config(page_title="Monitor Canasta Básica Chile", layout="wide", initial_sidebar_state="expanded")
+st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
+
+# --- Encabezado Fijo (Simulado) ---
+header_cols = st.columns([0.1, 0.8, 0.1])
+with header_cols[0]:
+    st.image(APP_LOGO_URL, width=50)
+with header_cols[1]:
+    st.markdown(f'<div class="app-header"><h1 class="title">Monitor Inteligente de la Canasta Básica de Alimentos - Chile</h1></div>', unsafe_allow_html=True)
+
+
+# --- Contenedor Principal para la Carga de Datos ---
+main_placeholder = st.empty()
+
+with main_placeholder.container():
+    with st.spinner("🔄 Iniciando aplicación y preparando filtros..."):
+        # ====== BARRA LATERAL DE FILTROS (Se renderiza primero) ======
+        st.sidebar.markdown("<h1>Filtros</h1>", unsafe_allow_html=True)
+
+        # --- Filtro por Período Presidencial ---
+        st.sidebar.markdown("### Periodo Gubernamental", unsafe_allow_html=True)
+        selected_presidential_period_name = st.sidebar.selectbox(
+            "Análisis por Gobierno",
+            options=list(VALID_PRESIDENTIAL_PERIODS.keys()),
+            index=0, # Default a "Todos los Periodos"
+            help="Selecciona un periodo presidencial para analizar tendencias y KPIs específicos de ese gobierno. Esto ajustará los años disponibles."
+        )
+        active_presidency_details = VALID_PRESIDENTIAL_PERIODS[selected_presidential_period_name]
+
+        # Determinar años disponibles basados en el periodo presidencial o el rango completo
+        # y configurar años por defecto para el multiselect de años.
+        
+        # Años disponibles para el multiselect de Años
+        # Si se selecciona un periodo presidencial, los años se limitan a ese periodo.
+        # Si no, se usan todos los años de MAX_YEARS_CONFIG.
+        years_for_multiselect_selector = []
+        default_years_for_multiselect = []
+
+        if active_presidency_details:
+            start_y = max(START_YEAR_DATA, active_presidency_details["start_year"])
+            end_y = min(current_year, active_presidency_details["end_year"])
+            for y in range(start_y, end_y + 1):
+                if str(y) in MAX_YEARS_CONFIG and MAX_YEARS_CONFIG[str(y)]: # Solo si el año tiene meses configurados
+                    years_for_multiselect_selector.append(str(y))
+            default_years_for_multiselect = years_for_multiselect_selector[:] # Todos los años del periodo
+        else: # "Todos los Periodos"
+            years_for_multiselect_selector = [y for y in MAX_YEARS_CONFIG.keys() if MAX_YEARS_CONFIG[y]] # Solo años con meses
+            if years_for_multiselect_selector:
+                 default_years_for_multiselect = [max(years_for_multiselect_selector)] # Año más reciente por defecto
+
+        years_for_multiselect_selector.sort(reverse=True)
+        default_years_for_multiselect.sort(reverse=True)
+
+
+        st.sidebar.markdown("### Periodo Específico", unsafe_allow_html=True)
+        selected_years_str_list = st.sidebar.multiselect(
+            "Año(s)",
+            options=years_for_multiselect_selector,
+            default=default_years_for_multiselect,
+            help="Selecciona uno o más años para el análisis. Se ajusta según el periodo presidencial."
+        )
+        
+        # Lógica para determinar qué años realmente cargar
+        # Si se seleccionó un periodo presidencial, se usa ese rango.
+        # Si además se seleccionaron años en el multiselect, estos actúan como un sub-filtro DENTRO del periodo presidencial.
+        # Si "Todos los Periodos" está activo, se usan los años del multiselect.
+        
+        active_years_to_load_config = {}
+        if active_presidency_details:
+            # Generar config para el periodo presidencial
+            temp_config_presidency = generate_years_to_load_from_filters(active_presidency_details, None)
+            if selected_years_str_list: # Si hay años seleccionados, filtrar la config presidencial
+                for year_k in list(temp_config_presidency.keys()): # Iterar sobre copia de llaves
+                    if year_k not in selected_years_str_list:
+                        del temp_config_presidency[year_k]
+            active_years_to_load_config = temp_config_presidency
+        elif selected_years_str_list: # "Todos los periodos" Y hay años seleccionados
+            active_years_to_load_config = generate_years_to_load_from_filters(None, selected_years_str_list)
+        else: # "Todos los periodos" Y NO hay años seleccionados (cargar todo lo de MAX_YEARS_CONFIG)
+            active_years_to_load_config = MAX_YEARS_CONFIG.copy()
+
+
+        # --- Filtro por Mes ---
+        # Los meses disponibles se basan en los AÑOS EFECTIVAMENTE SELECCIONADOS para la carga
+        # (ya sea por periodo presidencial o multiselect de años)
+        
+        # Primero, obtener todos los meses únicos de los años que se van a cargar
+        all_possible_months_in_active_load_config = set()
+        temp_df_for_month_extraction = load_data(active_years_to_load_config) # Carga preliminar para meses
+
+        if not temp_df_for_month_extraction.empty:
+            for year_val_str in active_years_to_load_config.keys():
+                if year_val_str in selected_years_str_list: # Solo considerar meses de años realmente seleccionados
+                    df_year_specific = temp_df_for_month_extraction[temp_df_for_month_extraction['year'] == int(year_val_str)]
+                    all_possible_months_in_active_load_config.update(df_year_specific['mes'].unique())
+        
+        ordered_available_months = sorted(
+            list(all_possible_months_in_active_load_config),
+            key=lambda m: list(NUM2MONTH.values()).index(m) if m in NUM2MONTH.values() else -1
+        )
+        selected_months_names = st.sidebar.multiselect(
+            "Mes(es)",
+            options=ordered_available_months,
+            default=ordered_available_months, # Todos los meses disponibles por defecto
+            help="Selecciona uno o más meses. Se listan los meses con datos para los años seleccionados."
         )
 
-# ====== FILTRAR DATOS PARA VISUALIZACIÓN FINAL ======
-if not selected_years or not selected_months or not selected_products:
-    st.warning("Por favor, selecciona al menos un año, un mes y un producto para ver los resultados.")
-    df_final_filtered = pd.DataFrame()
-else:
-    # Aplicar filtros de año, mes y producto al df_filtered_by_presidency
-    df_final_filtered = df_filtered_by_presidency[
-        df_filtered_by_presidency["year"].isin(selected_years) &
-        df_filtered_by_presidency["mes"].isin(selected_months) &
-        df_filtered_by_presidency["producto"].isin(selected_products)
-    ].copy()
+        # --- Filtro de Productos por Categoría ---
+        st.sidebar.markdown("### Productos", unsafe_allow_html=True)
+        
+        # Poblar "Sin Categoría"
+        all_categorized_prods = {prod for cat_prods in PRODUCT_CATEGORIES.values() for prod in cat_prods}
+        PRODUCT_CATEGORIES["Sin Categoría"] = sorted([
+            p for p in FIXED_PRODUCTS if p not in all_categorized_prods
+        ])
+
+        # Categorías activas (con productos presentes en FIXED_PRODUCTS)
+        active_product_categories = {
+            cat: sorted([p for p in prods if p in FIXED_PRODUCTS])
+            for cat, prods in PRODUCT_CATEGORIES.items()
+        }
+        active_product_categories = {cat: prods for cat, prods in active_product_categories.items() if prods}
+        
+        category_multiselect_options = sorted(list(active_product_categories.keys()))
+        default_categories = ["Panadería y Masas", "Lácteos y Huevos"]
+        # Asegurar que las categorías por defecto existan en las opciones
+        valid_default_categories = [cat for cat in default_categories if cat in category_multiselect_options]
 
 
-# ====== VISUALIZACIONES Y DATOS ======
+        selected_category_names = st.sidebar.multiselect(
+            "Categoría(s) de Producto",
+            category_multiselect_options,
+            default=valid_default_categories,
+            help="Selecciona una o más categorías para filtrar la lista de productos."
+        )
+
+        products_for_multiselect = []
+        if not selected_category_names: # Si no se selecciona ninguna categoría, ofrecer todos los productos
+            products_for_multiselect = sorted(FIXED_PRODUCTS)
+        else:
+            for cat_name in selected_category_names:
+                if cat_name in active_product_categories:
+                    products_for_multiselect.extend(active_product_categories[cat_name])
+        products_for_multiselect = sorted(list(set(products_for_multiselect)))
+
+        selected_products = st.sidebar.multiselect(
+            "Producto(s) Específico(s)",
+            products_for_multiselect,
+            default=products_for_multiselect, # Todos los productos de las categorías seleccionadas por defecto
+            help="Selecciona productos individuales. La lista se basa en las categorías elegidas."
+        )
+
+# --- Carga Principal de Datos (basada en filtros de tiempo) ---
+# Este spinner se mostrará DENTRO del placeholder si la carga es larga.
+with main_placeholder.container():
+    spinner_message = "🔄 Cargando datos para el periodo seleccionado..."
+    if not active_years_to_load_config: # Si no hay años para cargar (ej. mala config de filtros)
+        st.warning("No hay un rango de años válido seleccionado para cargar datos. Por favor, ajusta los filtros de periodo o año.")
+        st.stop()
+
+    with st.spinner(spinner_message):
+        df_data_loaded_scope = load_data(active_years_to_load_config)
+
+# --- Limpiar Placeholder y Mostrar Contenido ---
+main_placeholder.empty()
+
+
+if df_data_loaded_scope.empty:
+    st.error("⚠️ No se encontraron datos para el rango de tiempo y productos configurados. Verifica la disponibilidad de los PDFs en la fuente o ajusta los filtros.")
+    st.stop()
+
+# Aplicar filtros finales de mes y producto al DataFrame cargado para el SCOPE
+df_final_filtered = df_data_loaded_scope.copy()
+if selected_months_names:
+    df_final_filtered = df_final_filtered[df_final_filtered["mes"].isin(selected_months_names)]
+if selected_products:
+    df_final_filtered = df_final_filtered[df_final_filtered["producto"].isin(selected_products)]
+else: # Si no se seleccionan productos explícitamente, mostrar un mensaje en lugar de error o todo
+    st.info("ℹ️ Por favor, selecciona al menos un producto en la barra lateral para visualizar los datos.")
+    st.stop()
+
+
+# ====== SECCIÓN DE KPIs PRESIDENCIALES ======
+if active_presidency_details: # Solo mostrar si se ha seleccionado un periodo presidencial específico
+    st.markdown("---")
+    st.markdown(f"<h2>Análisis del Periodo Presidencial: {selected_presidential_period_name}</h2>", unsafe_allow_html=True)
+    
+    # Para los KPIs de min/max producto, necesitamos todos los datos del periodo presidencial, no solo los filtrados por producto en la sidebar.
+    # df_data_loaded_scope ya contiene los datos del periodo presidencial.
+    presidency_kpis = get_presidential_kpis(df_final_filtered, df_data_loaded_scope, selected_products)
+
+    kpi_cols = st.columns(3)
+    with kpi_cols[0]:
+        if presidency_kpis["avg_cumulative_variation"] is not None:
+            st.metric(
+                label=f"Var. Acum. Promedio (Prod. Selec.)",
+                value=f"{presidency_kpis['avg_cumulative_variation']:.2f}%",
+                help="Variación de precio acumulada promedio para los productos actualmente seleccionados en la barra lateral, durante este periodo presidencial."
+            )
+            st.caption("Este indicador refleja cómo, en promedio, los productos que tienes seleccionados cambiaron de precio durante este gobierno.")
+        else:
+            st.info("No hay datos suficientes para la var. acum. promedio de productos seleccionados.")
+    
+    with kpi_cols[1]:
+        if presidency_kpis["max_increase_product"]:
+            st.metric(
+                label=f"Mayor Alza Acumulada",
+                value=f"{presidency_kpis['max_increase_product']}",
+                delta=f"{presidency_kpis['max_increase_value']:.2f}%", delta_color="inverse",
+                help=f"El producto (de toda la canasta monitoreada) que más subió de precio acumulado durante el periodo: {presidency_kpis['max_increase_product']} ({presidency_kpis['max_increase_value']:.2f}%)."
+            )
+            st.caption("Identifica el producto de la canasta general que experimentó el mayor encarecimiento durante este mandato.")
+        else:
+            st.info("No hay datos para la mayor alza.")
+
+    with kpi_cols[2]:
+        if presidency_kpis["max_decrease_product"]:
+            st.metric(
+                label=f"Mayor Baja Acumulada",
+                value=f"{presidency_kpis['max_decrease_product']}",
+                delta=f"{presidency_kpis['max_decrease_value']:.2f}%", delta_color="normal",
+                help=f"El producto (de toda la canasta monitoreada) que más bajó de precio (o menos subió) acumulado durante el periodo: {presidency_kpis['max_decrease_product']} ({presidency_kpis['max_decrease_value']:.2f}%)."
+            )
+            st.caption("Muestra el producto de la canasta general que tuvo la mayor reducción de precio (o la menor alza) en este gobierno.")
+        else:
+            st.info("No hay datos para la mayor baja.")
+    st.markdown("---")
+
+
+# ====== VISUALIZACIONES Y DATOS (para el df_final_filtered) ======
 if not df_final_filtered.empty:
-    # --- KPI: Variación Acumulada Año en Curso (si está seleccionado) ---
     current_year_str_kpi = str(datetime.date.today().year)
-    if current_year_str_kpi in selected_years:
-        st.header(f"Resumen Año {current_year_str_kpi}")
-        # Usar df_data_full para el KPI para tener todos los meses del año actual, luego filtrar por productos seleccionados
-        df_current_year_for_kpi_source = df_data_full[
-            (df_data_full['year'] == int(current_year_str_kpi)) & # Comparar con int year
-            (df_data_full['producto'].isin(selected_products))
+    # Convertir selected_years_str_list a int para comparación
+    selected_years_int_list = [int(y) for y in selected_years_str_list]
+
+    if int(current_year_str_kpi) in selected_years_int_list:
+        st.markdown(f"<h2>Resumen Año en Curso ({current_year_str_kpi})</h2>", unsafe_allow_html=True)
+        df_current_year_for_kpi_source = df_data_loaded_scope[ # Usar datos del scope cargado
+            (df_data_loaded_scope['year'] == int(current_year_str_kpi)) &
+            (df_data_loaded_scope['producto'].isin(selected_products))
         ]
         
         cumulative_variations_calc = []
         if not df_current_year_for_kpi_source.empty:
-            for prod_name in df_current_year_for_kpi_source['producto'].unique():
-                df_single_prod_curr_year = df_current_year_for_kpi_source[df_current_year_for_kpi_source['producto'] == prod_name]
+            for prod_name_kpi in df_current_year_for_kpi_source['producto'].unique():
+                df_single_prod_curr_year = df_current_year_for_kpi_source[df_current_year_for_kpi_source['producto'] == prod_name_kpi]
                 if not df_single_prod_curr_year.empty:
-                    cum_var = calculate_yearly_cumulative_variation(df_single_prod_curr_year)
+                    # Necesitamos una función que calcule la variación acumulada para un solo año.
+                    # Reutilizamos calculate_period_cumulative_variation, que funciona bien para un solo año también.
+                    cum_var = calculate_period_cumulative_variation(df_single_prod_curr_year)
                     cumulative_variations_calc.append(cum_var)
             if cumulative_variations_calc:
-                avg_cumulative_variation = sum(cumulative_variations_calc) / len(cumulative_variations_calc)
+                avg_cumulative_variation_year = sum(cumulative_variations_calc) / len(cumulative_variations_calc)
                 st.metric(
                     label=f"Variación Acumulada Promedio {current_year_str_kpi} (Prod. Seleccionados)",
-                    value=f"{avg_cumulative_variation:.2f}%"
+                    value=f"{avg_cumulative_variation_year:.2f}%",
+                    help="Variación de precio acumulada promedio para los productos seleccionados, desde inicio de año hasta el último mes con datos."
                 )
             else:
-                st.info(f"No hay suficientes datos mensuales en {current_year_str_kpi} para los productos seleccionados para calcular la variación acumulada.")
+                st.info(f"No hay suficientes datos mensuales en {current_year_str_kpi} para los productos seleccionados para calcular la variación acumulada del año.")
         else:
-            st.info(f"No hay datos para el año {current_year_str_kpi} con los productos seleccionados para calcular la variación acumulada.")
-        st.divider()
+            st.info(f"No hay datos para el año {current_year_str_kpi} con los productos seleccionados para calcular la variación acumulada del año.")
+        st.markdown("---")
 
     # --- Preparación de Periodo para Gráficos ---
     df_final_filtered["periodo"] = df_final_filtered["year"].astype(str) + " " + df_final_filtered["mes"]
     
-    # Orden cronológico global de todos los periodos posibles en los datos originales (df_data_full)
-    # Convertir year y mes_num a string para crear el periodo
-    df_data_full_copy = df_data_full.copy()
-    df_data_full_copy['periodo_temp'] = df_data_full_copy['year'].astype(str) + " " + df_data_full_copy['mes']
-    
-    all_periods_ordered_globally = sorted(
-        df_data_full_copy["periodo_temp"].unique(),
-        key=lambda x: (
-            int(x.split()[0]), 
-            list(NUM2MONTH.values()).index(x.split()[1])
-        )
+    # Ordenar periodos para el gráfico
+    # Usar todos los periodos posibles del df_data_loaded_scope como base para el orden global
+    df_scope_copy = df_data_loaded_scope.copy()
+    df_scope_copy['periodo_temp'] = df_scope_copy['year'].astype(str) + " " + df_scope_copy['mes']
+    all_periods_in_scope_ordered = sorted(
+        df_scope_copy["periodo_temp"].unique(),
+        key=lambda x: (int(x.split()[0]), list(NUM2MONTH.values()).index(x.split()[1]))
     )
-    actual_periods_in_filtered_data = df_final_filtered["periodo"].unique()
-    ordered_periods_for_chart = [p for p in all_periods_ordered_globally if p in actual_periods_in_filtered_data]
+    actual_periods_in_final_filtered = df_final_filtered["periodo"].unique()
+    ordered_periods_for_chart = [p for p in all_periods_in_scope_ordered if p in actual_periods_in_final_filtered]
 
     if ordered_periods_for_chart:
         df_final_filtered["periodo"] = pd.Categorical(
-            df_final_filtered["periodo"],
-            categories=ordered_periods_for_chart,
-            ordered=True
+            df_final_filtered["periodo"], categories=ordered_periods_for_chart, ordered=True
         )
 
-        st.header("Análisis de Variaciones")
-        st.subheader("Variación Porcentual Mensual por Producto")
+        st.markdown("<h2>Análisis de Variaciones Mensuales</h2>", unsafe_allow_html=True)
+        # st.subheader("Variación Porcentual Mensual por Producto")
         monthly_pivot = df_final_filtered.pivot_table(
             index="periodo", columns="producto", values="variacion", aggfunc="mean"
         )
-        # Reindexar para asegurar el orden cronológico y solo periodos con datos
-        # Usar ordered_periods_for_chart que ya está filtrado y ordenado
         monthly_pivot = monthly_pivot.reindex(ordered_periods_for_chart).dropna(how='all', axis=0)
-
 
         if not monthly_pivot.empty:
             fig_line = px.line(
-                monthly_pivot,
-                x=monthly_pivot.index.astype(str), # Asegurar que el índice sea string para el eje x
-                y=monthly_pivot.columns,
+                monthly_pivot, x=monthly_pivot.index.astype(str), y=monthly_pivot.columns,
                 labels={'value': 'Variación (%)', 'periodo': 'Período', 'producto': 'Producto'},
+                color_discrete_sequence=px.colors.qualitative.Plotly # Paleta de colores
             )
-            fig_line.update_layout(height=500, legend_title_text='Productos', xaxis_tickangle=-45, hovermode="x unified")
+            fig_line.update_layout(
+                height=500, legend_title_text='Productos', xaxis_tickangle=-45, 
+                hovermode="x unified", paper_bgcolor=COLOR_BACKGROUND_MAIN, plot_bgcolor=COLOR_BACKGROUND_MAIN,
+                font=dict(family=FONT_FAMILY_SANS_SERIF, color=COLOR_PRIMARY_TEXT)
+            )
             st.plotly_chart(fig_line, use_container_width=True)
         else:
             st.info("No hay datos suficientes para mostrar el gráfico de líneas con los filtros actuales.")
 
-        st.subheader("Top 5 Alzas y Bajas (Promedio en Período Seleccionado)")
+        st.markdown("<h3>Top 5 Alzas y Bajas (Promedio en Período Seleccionado)</h3>", unsafe_allow_html=True)
         avg_variation_per_product = df_final_filtered.groupby('producto')['variacion'].mean().sort_values()
         top_increases = avg_variation_per_product[avg_variation_per_product > 0].nlargest(5).sort_values(ascending=False)
         top_decreases = avg_variation_per_product[avg_variation_per_product <= 0].nsmallest(5).sort_values(ascending=True)
         combined_tops = pd.concat([top_decreases, top_increases.iloc[::-1]] ).sort_values()
 
         if not combined_tops.empty:
-            colors = ['#d62728' if v < 0 else ('#2ca02c' if v > 0 else '#7f7f7f') for v in combined_tops.values]
+            colors = [COLOR_ACCENT_DANGER if v < 0 else (COLOR_ACCENT_SUCCESS if v > 0 else COLOR_SECONDARY_TEXT) for v in combined_tops.values]
             fig_bar_tops = go.Figure(go.Bar(
                 y=combined_tops.index, x=combined_tops.values, orientation='h',
                 marker_color=colors, text=combined_tops.values, texttemplate='%{text:.2f}%', textposition='outside'
             ))
             fig_bar_tops.update_layout(
-                xaxis_title="Variación Promedio (%)", yaxis_title="Producto",
-                height=max(400, len(combined_tops) * 35 + 100), 
-                yaxis_autorange="reversed" # Muestra las mayores alzas (positivas) arriba
+                xaxis_title="Variación Promedio Mensual (%)", yaxis_title="Producto",
+                height=max(400, len(combined_tops) * 40 + 100), 
+                yaxis_autorange="reversed", paper_bgcolor=COLOR_BACKGROUND_MAIN, plot_bgcolor=COLOR_BACKGROUND_MAIN,
+                font=dict(family=FONT_FAMILY_SANS_SERIF, color=COLOR_PRIMARY_TEXT)
             )
             st.plotly_chart(fig_bar_tops, use_container_width=True)
         else:
             st.info("No hay suficientes datos para mostrar el top de alzas y bajas con los filtros actuales.")
 
-        st.subheader("📝 Interpretaciones (Periodo Seleccionado)")
+        st.markdown("<h3>📝 Interpretaciones (Periodo Seleccionado en Filtros)</h3>", unsafe_allow_html=True)
         if not df_final_filtered["variacion"].empty and df_final_filtered["variacion"].notna().any():
             avg_overall_variation = df_final_filtered["variacion"].mean()
-            st.markdown(f"- **Variación media general** de los productos seleccionados: **{avg_overall_variation:.2f}%**.")
-            idx_max = df_final_filtered["variacion"].idxmax()
+            st.markdown(f"<p class='interpretation-text'>- <b>Variación media general</b> de los productos seleccionados en el periodo filtrado: <b>{avg_overall_variation:.2f}%</b>.</p>", unsafe_allow_html=True)
+            
+            idx_max = df_final_filtered["variacion"].idxmax() # Mayor variación mensual puntual
             row_max_variation = df_final_filtered.loc[idx_max]
-            st.markdown(f"- **Mayor alza puntual registrada**: _{row_max_variation['producto']}_ con **+{row_max_variation['variacion']:.2f}%** en {row_max_variation['periodo']}.")
-            idx_min = df_final_filtered["variacion"].idxmin()
+            st.markdown(f"<p class='interpretation-text'>- <b>Mayor alza mensual puntual</b> registrada: <i>{row_max_variation['producto']}</i> con <b>+{row_max_variation['variacion']:.2f}%</b> en {row_max_variation['periodo']}.</p>", unsafe_allow_html=True)
+            
+            idx_min = df_final_filtered["variacion"].idxmin() # Mayor baja mensual puntual
             row_min_variation = df_final_filtered.loc[idx_min]
-            st.markdown(f"- **Mayor baja puntual registrada**: _{row_min_variation['producto']}_ con **{row_min_variation['variacion']:.2f}%** en {row_min_variation['periodo']}.")
+            st.markdown(f"<p class='interpretation-text'>- <b>Mayor baja mensual puntual</b> registrada: <i>{row_min_variation['producto']}</i> con <b>{row_min_variation['variacion']:.2f}%</b> en {row_min_variation['periodo']}.</p>", unsafe_allow_html=True)
         else:
-            st.markdown("- No hay datos de variación disponibles para calcular interpretaciones con los filtros actuales.")
+            st.markdown("<p class='interpretation-text'>- No hay datos de variación disponibles para calcular interpretaciones con los filtros actuales.</p>", unsafe_allow_html=True)
     else:
-        st.info("No hay datos de período para mostrar después de aplicar los filtros.")
+        st.info("ℹ️ No hay datos de período para mostrar después de aplicar todos los filtros. Intenta ampliar el rango de fechas o la selección de productos.")
         
-    st.header("📄 Datos Detallados")
-    # Columnas a mostrar en la tabla de datos detallados
-    cols_to_show = ["year", "mes", "producto", "variacion"]
-    # Asegurar que 'periodo' exista antes de intentar ordenarlo o quitarlo
-    if "periodo" in df_final_filtered.columns:
-        df_display_detailed = df_final_filtered.sort_values(["periodo", "producto"])
-        # cols_to_show.append("periodo") # Descomentar si se quiere mostrar la columna periodo
-    else:
-        # Si no hay 'periodo', ordenar por año y mes_num (del df_data_full subyacente)
-        # Necesitamos traer mes_num a df_final_filtered si no está.
-        if 'mes_num' not in df_final_filtered.columns and 'year' in df_final_filtered.columns and 'mes' in df_final_filtered.columns:
-             # Crear mes_num_map_inv para mapear nombre de mes a número
-             mes_num_map_inv = {v: k for k, v in NUM2MONTH.items()}
-             df_final_filtered['mes_num_temp'] = df_final_filtered['mes'].map(lambda m: int(mes_num_map_inv.get(m, 0)))
-             df_display_detailed = df_final_filtered.sort_values([("year", "astype", "int"), "mes_num_temp", "producto"])
-             df_display_detailed = df_display_detailed.drop(columns=['mes_num_temp'])
-        else:
-             df_display_detailed = df_final_filtered.sort_values([("year", "astype", "int"), ("mes_num", "astype", "int"), "producto"])
+    with st.expander("📄 Ver Datos Detallados Filtrados", expanded=False):
+        cols_to_show = ["year", "mes", "producto", "variacion"]
+        df_display_detailed = df_final_filtered.copy()
+        if "periodo" in df_display_detailed.columns:
+             df_display_detailed = df_display_detailed.sort_values(["periodo", "producto"])
+        else: # Ordenar por año y mes_num si 'periodo' no está (debería estar)
+            df_display_detailed = df_display_detailed.sort_values(['year', 'mes_num', 'producto'])
+
+        st.dataframe(
+            df_display_detailed[cols_to_show],
+            use_container_width=True,
+            hide_index=True
+        )
+
+elif selected_years_str_list and selected_months_names and selected_products :
+    st.info("ℹ️ No se encontraron datos que coincidan con todos los filtros seleccionados. Prueba con una selección diferente.")
+else:
+    st.info("✨ Por favor, ajusta los filtros en la barra lateral para comenzar el análisis.")
 
 
-    st.dataframe(
-        df_display_detailed[cols_to_show],
-        use_container_width=True,
-        hide_index=True
-    )
-
-elif selected_years and selected_months and selected_products: # Si hubo selección pero no resultaron datos
-    st.info("No se encontraron datos que coincidan con todos los filtros seleccionados.")
+# --- Footer Personalizado ---
+st.markdown(f"""
+<div class="custom-footer">
+    Aplicación para monitorear la Canasta Básica de Alimentos en Chile.<br>
+    Datos obtenidos del Observatorio Social, Ministerio de Desarrollo Social y Familia.<br>
+    Desarrollado con Streamlit.
+</div>
+""", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-st.sidebar.info("Aplicación para monitorear la Canasta Básica de Alimentos en Chile. Los datos se obtienen del Observatorio Social, Ministerio de Desarrollo Social y Familia.")
+st.sidebar.info("Los datos se actualizan según la disponibilidad en la fuente oficial. La primera carga puede ser más lenta.")
