@@ -26,7 +26,7 @@ Crear un dashboard interactivo que extrae y visualiza automáticamente las varia
 
 ---
 
-## ☁️ Infraestructura AWS  
+## Infraestructura AWS  
 - **AWS S3**  
   - Bucket público `canasta-basica-data` para almacenar los PDFs descargados  
   - Estructura de objetos:  
@@ -46,7 +46,7 @@ Crear un dashboard interactivo que extrae y visualiza automáticamente las varia
 
 ---
 
-## 📈 Funcionalidades Clave  
+## Funcionalidades Clave  
 1. **Pipeline ETL**  
    - Construcción automática de URLs  
    - Extracción precisa de “producto + variación %”  
